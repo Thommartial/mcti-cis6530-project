@@ -1,0 +1,111 @@
+# Group 1-10
+mkdir 1_G0122_SilentLibrarian_Iran
+touch 1_G0122_SilentLibrarian_Iran/1_G0122_SilentLibrarian_Iran.txt
+
+mkdir 2_G0011_PittyTiger_China
+touch 2_G0011_PittyTiger_China/2_G0011_PittyTiger_China.txt
+
+mkdir 3_G0024_PutterPanda_China
+touch 3_G0024_PutterPanda_China/3_G0024_PutterPanda_China.txt
+
+mkdir 4_G0106_Rocke_China
+touch 4_G0106_Rocke_China/4_G0106_Rocke_China.txt
+
+mkdir 5_G0029_ScarletMimic_China
+touch 5_G0029_ScarletMimic_China/5_G0029_ScarletMimic_China.txt
+
+mkdir 6_G0039_Suckfly_China
+touch 6_G0039_Suckfly_China/6_G0039_Suckfly_China.txt
+
+mkdir 7_G0126_TA459_China
+touch 7_G0126_TA459_China/7_G0126_TA459_China.txt
+
+mkdir 8_G0027_ThreatGroup-3390_China
+touch 8_G0027_ThreatGroup-3390_China/8_G0027_ThreatGroup-3390_China.txt
+
+mkdir 9_G0044_WinntiGroup_China
+touch 9_G0044_WinntiGroup_China/9_G0044_WinntiGroup_China.txt
+
+mkdir 10_G0128_ZIRCONIUM_China
+touch 10_G0128_ZIRCONIUM_China/10_G0128_ZIRCONIUM_China.txt
+
+# Group 11-20
+mkdir 11_G0103_APT12_China
+touch 11_G0103_APT12_China/11_G0103_APT12_China.txt
+
+mkdir 12_G0082_BlackTech_China
+touch 12_G0082_BlackTech_China/12_G0082_BlackTech_China.txt
+
+mkdir 13_G0017_DragonOK_China
+touch 13_G0017_DragonOK_China/13_G0017_DragonOK_China.txt
+
+mkdir 14_G0030_DustStorm_China
+touch 14_G0030_DustStorm_China/14_G0030_DustStorm_China.txt
+
+mkdir 15_G0079_DarkHydrus_Iran
+touch 15_G0079_DarkHydrus_Iran/15_G0079_DarkHydrus_Iran.txt
+
+mkdir 16_G0072_Honeybee_Unknown
+touch 16_G0072_Honeybee_Unknown/16_G0072_Honeybee_Unknown.txt
+
+mkdir 17_G0071_Overworm_Unknown
+touch 17_G0071_Overworm_Unknown/17_G0071_Overworm_Unknown.txt
+
+mkdir 18_G0022_Sharpshooter_Unknown
+touch 18_G0022_Sharpshooter_Unknown/18_G0022_Sharpshooter_Unknown.txt
+
+mkdir 19_G0001_Silence_Unknown
+touch 19_G0001_Silence_Unknown/19_G0001_Silence_Unknown.txt
+
+mkdir 20_G0054_Sowbug_Unknown
+touch 20_G0054_Sowbug_Unknown/20_G0054_Sowbug_Unknown.txt
+
+# Group 21-30
+mkdir 21_G0035_BlackOasis_MiddleEast
+touch 21_G0035_BlackOasis_MiddleEast/21_G0035_BlackOasis_MiddleEast.txt
+
+mkdir 22_G0043_Molerats_MiddleEast
+touch 22_G0043_Molerats_MiddleEast/22_G0043_Molerats_MiddleEast.txt
+
+mkdir 23_G0090_WIRTE_MiddleEast
+touch 23_G0090_WIRTE_MiddleEast/23_G0090_WIRTE_MiddleEast.txt
+
+mkdir 24_G0083_SilverTerrior_Nigeria
+touch 24_G0083_SilverTerrior_Nigeria/24_G0083_SilverTerrior_Nigeria.txt
+
+mkdir 25_G0067_APT37_NorthKorea
+touch 25_G0067_APT37_NorthKorea/25_G0067_APT37_NorthKorea.txt
+
+mkdir 26_G0082_APT38_NorthKorea
+touch 26_G0082_APT38_NorthKorea/26_G0082_APT38_NorthKorea.txt
+
+mkdir 27_G0094_Kimsuky_NorthKorea
+touch 27_G0094_Kimsuky_NorthKorea/27_G0094_Kimsuky_NorthKorea.txt
+
+mkdir 28_G0032_LazarusGroup_NorthKorea
+touch 28_G0032_LazarusGroup_NorthKorea/28_G0032_LazarusGroup_NorthKorea.txt
+
+mkdir 29_G0086_StolenPencil_NorthKorea
+touch 29_G0086_StolenPencil_NorthKorea/29_G0086_StolenPencil_NorthKorea.txt
+
+mkdir 30_G0078_GorgonGroup_Pakistan
+touch 30_G0078_GorgonGroup_Pakistan/30_G0078_GorgonGroup_Pakistan.txt
+
+# Group 31-36
+mkdir 31_G0059_MagicHound_Iran
+touch 31_G0059_MagicHound_Iran/31_G0059_MagicHound_Iran.txt
+
+mkdir 32_G0069_MuddyWater_Iran
+touch 32_G0069_MuddyWater_Iran/32_G0069_MuddyWater_Iran.txt
+
+mkdir 33_G0049_OilRig_Iran
+touch 33_G0049_OilRig_Iran/33_G0049_OilRig_Iran.txt
+
+mkdir 34_G0086_TEMP.Veles_Russia
+touch 34_G0086_TEMP.Veles_Russia/34_G0086_TEMP.Veles_Russia.txt
+
+mkdir 35_G0010_Turla_Russia
+touch 35_G0010_Turla_Russia/35_G0010_Turla_Russia.txt
+
+mkdir 36_G0080_CobaltGroup_Russia
+touch 36_G0080_CobaltGroup_Russia/36_G0080_CobaltGroup_Russia.txt
