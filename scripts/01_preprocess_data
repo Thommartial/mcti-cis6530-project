@@ -1,0 +1,464 @@
+#!/usr/bin/env python3
+"""
+Data Preprocessing Script for Deep Malware MITRE Group Detection
+Handles classes with insufficient samples for stratified splitting
+Combines data preprocessing and sequence length analysis
+"""
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+import logging
+import pickle
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from collections import Counter, defaultdict
+from sklearn.model_selection import train_test_split
+from sklearn.utils.class_weight import compute_class_weight
+import tensorflow as tf
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+import re
+import config
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(config.LOGS_DIR / 'unified_preprocessing.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger('preprocessing')
+
+class UnifiedPreprocessor:
+    def __init__(self):
+        self.opcode_files = []
+        self.sequence_lengths = []
+        self.length_stats = {}
+        self.vocab = {}
+        self.reverse_vocab = {}
+        self.class_mapping = {}
+        self.processed_data = {}
+        
+    def find_opcode_files(self):
+        """Find all opcode files in the data directory"""
+        logger.info("Searching for opcode files...")
+        self.opcode_files = list(config.DATA_DIR.glob("*.txt"))
+        
+        if not self.opcode_files:
+            raise FileNotFoundError(f"No opcode files found in {config.DATA_DIR}")
+            
+        logger.info(f"Found {len(self.opcode_files)} opcode files")
+        return self.opcode_files
+    
+    def analyze_sequence_lengths(self):
+        """Analyze sequence lengths and determine optimal length"""
+        logger.info("Analyzing sequence lengths across all files...")
+        
+        self.sequence_lengths = []
+        for file_path in self.opcode_files:
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read().strip()
+                    if content:
+                        opcodes = content.split()
+                        self.sequence_lengths.append(len(opcodes))
+            except Exception as e:
+                logger.warning(f"Could not read {file_path}: {e}")
+                continue
+        
+        # Compute statistics
+        self.sequence_lengths = np.array(self.sequence_lengths)
+        self.length_stats = {
+            'total_samples': len(self.sequence_lengths),
+            'min_length': np.min(self.sequence_lengths),
+            'max_length': np.max(self.sequence_lengths),
+            'mean_length': np.mean(self.sequence_lengths),
+            'median_length': np.median(self.sequence_lengths),
+            'std_length': np.std(self.sequence_lengths),
+            'q1': np.percentile(self.sequence_lengths, 25),
+            'q3': np.percentile(self.sequence_lengths, 75),
+            'q95': np.percentile(self.sequence_lengths, 95),
+            'q99': np.percentile(self.sequence_lengths, 99)
+        }
+        
+        logger.info("Sequence length analysis completed")
+        return self.length_stats
+    
+    def suggest_optimal_length(self, coverage_threshold=0.95, max_length=20000):
+        """Suggest optimal sequence length based on data distribution"""
+        logger.info("Calculating optimal sequence length...")
+        
+        # Calculate coverage at different lengths
+        length_options = [1000, 2000, 5000, 8000, 10000, 12000, 15000, 18000, 20000]
+        coverage_data = []
+        
+        for length in length_options:
+            if length > max_length:
+                continue
+            coverage = np.sum(self.sequence_lengths <= length) / len(self.sequence_lengths)
+            coverage_data.append({
+                'sequence_length': length,
+                'coverage': coverage,
+                'truncated_percentage': (1 - coverage) * 100,
+                'samples_truncated': np.sum(self.sequence_lengths > length)
+            })
+        
+        # Find optimal length
+        optimal_length = None
+        for option in coverage_data:
+            if option['coverage'] >= coverage_threshold:
+                optimal_length = option
+                break
+        
+        if optimal_length is None:
+            optimal_length = max(coverage_data, key=lambda x: x['coverage'])
+            logger.warning(f"No length meets {coverage_threshold*100}% coverage. Using best available: {optimal_length['coverage']*100:.1f}%")
+        
+        logger.info(f"Optimal sequence length: {optimal_length['sequence_length']} "
+                   f"(covers {optimal_length['coverage']*100:.1f}% of samples)")
+        
+        return optimal_length, coverage_data
+    
+    def plot_sequence_analysis(self, coverage_data, optimal_length):
+        """Create visualization of sequence length analysis"""
+        logger.info("Creating sequence length analysis plots...")
+        
+        plt.style.use('default')
+        sns.set_palette("husl")
+        
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        axes = axes.flatten()
+        
+        # Plot 1: Sequence length distribution
+        axes[0].hist(self.sequence_lengths, bins=50, edgecolor='black', alpha=0.7)
+        axes[0].axvline(optimal_length['sequence_length'], color='red', linestyle='--', 
+                       linewidth=2, label=f"Optimal: {optimal_length['sequence_length']}")
+        axes[0].axvline(self.length_stats['mean_length'], color='green', linestyle='--',
+                       linewidth=2, label=f"Mean: {self.length_stats['mean_length']:.0f}")
+        axes[0].set_xlabel('Sequence Length')
+        axes[0].set_ylabel('Frequency')
+        axes[0].set_title('Distribution of Opcode Sequence Lengths')
+        axes[0].legend()
+        axes[0].grid(True, alpha=0.3)
+        
+        # Plot 2: Cumulative distribution
+        sorted_lengths = np.sort(self.sequence_lengths)
+        cumulative = np.arange(1, len(sorted_lengths) + 1) / len(sorted_lengths)
+        axes[1].plot(sorted_lengths, cumulative, linewidth=2)
+        axes[1].axhline(0.95, color='red', linestyle='--', alpha=0.7, label='95% Coverage')
+        axes[1].axvline(optimal_length['sequence_length'], color='red', linestyle='--', 
+                       linewidth=2, label=f"Optimal Length")
+        axes[1].set_xlabel('Sequence Length')
+        axes[1].set_ylabel('Cumulative Probability')
+        axes[1].set_title('Cumulative Distribution of Sequence Lengths')
+        axes[1].legend()
+        axes[1].grid(True, alpha=0.3)
+        
+        # Plot 3: Coverage vs Sequence Length
+        lengths = [d['sequence_length'] for d in coverage_data]
+        coverages = [d['coverage'] * 100 for d in coverage_data]
+        axes[2].plot(lengths, coverages, marker='o', linewidth=2, markersize=6)
+        axes[2].axhline(95, color='red', linestyle='--', alpha=0.7, label='95% Target')
+        axes[2].axvline(optimal_length['sequence_length'], color='red', linestyle='--', 
+                       linewidth=2, label=f"Optimal: {optimal_length['sequence_length']}")
+        axes[2].set_xlabel('Sequence Length')
+        axes[2].set_ylabel('Coverage (%)')
+        axes[2].set_title('Sequence Length vs Data Coverage')
+        axes[2].legend()
+        axes[2].grid(True, alpha=0.3)
+        
+        # Plot 4: Truncation impact
+        truncated_pct = [d['truncated_percentage'] for d in coverage_data]
+        axes[3].bar(lengths, truncated_pct, alpha=0.7, width=800)
+        axes[3].axvline(optimal_length['sequence_length'], color='red', linestyle='--', 
+                       linewidth=2, label=f"Optimal: {optimal_length['sequence_length']}")
+        axes[3].set_xlabel('Sequence Length')
+        axes[3].set_ylabel('Truncated Samples (%)')
+        axes[3].set_title('Percentage of Samples That Would Be Truncated')
+        axes[3].legend()
+        axes[3].grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig(config.IMG_DIR / 'sequence_length_analysis.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        logger.info("Sequence length analysis plots saved")
+    
+    def extract_classes_from_filenames(self):
+        """Extract MITRE APT groups from filenames"""
+        logger.info("Extracting classes from filenames...")
+        
+        class_counter = Counter()
+        file_class_mapping = {}
+        
+        # Regex pattern to extract MITRE ID (e.g., G0010)
+        pattern = r'(G\d+)_'
+        
+        for file_path in self.opcode_files:
+            filename = file_path.stem
+            match = re.search(pattern, filename)
+            
+            if match:
+                mitre_id = match.group(1)
+                class_counter[mitre_id] += 1
+                file_class_mapping[file_path] = mitre_id
+            else:
+                logger.warning(f"Could not extract MITRE ID from: {filename}")
+                continue
+        
+        # Remove classes with very few samples
+        min_samples = 5
+        valid_classes = {cls: count for cls, count in class_counter.items() if count >= min_samples}
+        removed_classes = {cls: count for cls, count in class_counter.items() if count < min_samples}
+        
+        logger.info(f"Valid classes (>={min_samples} samples): {len(valid_classes)}")
+        logger.info(f"Removed classes (<{min_samples} samples): {len(removed_classes)}")
+        
+        if removed_classes:
+            logger.info(f"Removed classes: {removed_classes}")
+        
+        # Create class mapping
+        self.class_mapping = {
+            'class_to_int': {cls: idx for idx, cls in enumerate(valid_classes.keys())},
+            'int_to_class': {idx: cls for idx, cls in enumerate(valid_classes.keys())},
+            'class_counts': valid_classes,
+            'removed_classes': removed_classes
+        }
+        
+        # Filter files to only include valid classes
+        self.opcode_files = [f for f in self.opcode_files if f in file_class_mapping and file_class_mapping[f] in valid_classes]
+        self.file_class_mapping = {f: file_class_mapping[f] for f in self.opcode_files}
+        
+        logger.info(f"After filtering: {len(self.opcode_files)} files, {len(valid_classes)} classes")
+        return self.class_mapping
+    
+    def build_vocabulary(self):
+        """Build vocabulary from all opcode sequences"""
+        logger.info("Building vocabulary from opcode sequences...")
+        
+        all_opcodes = set()
+        for file_path in self.opcode_files:
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read().strip()
+                    if content:
+                        opcodes = content.split()
+                        all_opcodes.update(opcodes)
+            except Exception as e:
+                logger.warning(f"Could not read {file_path} for vocabulary: {e}")
+                continue
+        
+        # Create vocabulary mapping
+        self.vocab = {opcode: idx + 1 for idx, opcode in enumerate(all_opcodes)}  # 0 is reserved for padding
+        self.reverse_vocab = {idx: opcode for opcode, idx in self.vocab.items()}
+        
+        logger.info(f"Vocabulary built with {len(self.vocab)} unique opcodes")
+        return self.vocab
+    
+    def preprocess_sequences(self, max_sequence_length):
+        """Preprocess sequences with the determined optimal length"""
+        logger.info(f"Preprocessing sequences with max length: {max_sequence_length}")
+        
+        sequences = []
+        labels = []
+        file_paths = []
+        
+        for file_path in self.opcode_files:
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read().strip()
+                    if content:
+                        opcodes = content.split()
+                        
+                        # Convert opcodes to integers
+                        sequence = [self.vocab.get(opcode, 0) for opcode in opcodes]  # 0 for unknown
+                        
+                        # Pad/truncate sequence
+                        if len(sequence) > max_sequence_length:
+                            sequence = sequence[:max_sequence_length]
+                        
+                        sequences.append(sequence)
+                        labels.append(self.class_mapping['class_to_int'][self.file_class_mapping[file_path]])
+                        file_paths.append(file_path)
+                        
+            except Exception as e:
+                logger.warning(f"Error processing {file_path}: {e}")
+                continue
+        
+        # Pad sequences to the same length
+        X = pad_sequences(sequences, maxlen=max_sequence_length, padding='post', truncating='post')
+        y = np.array(labels)
+        
+        logger.info(f"Preprocessed {len(X)} sequences")
+        logger.info(f"X shape: {X.shape}, y shape: {y.shape}")
+        
+        return X, y, file_paths
+    
+    def split_data(self, X, y, test_size=0.3, val_size=0.1):
+        """Split data into train, validation, and test sets"""
+        logger.info("Splitting data into train/validation/test sets...")
+        
+        # First split: separate test set
+        X_temp, X_test, y_temp, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=42, stratify=y
+        )
+        
+        # Second split: separate validation set from remaining data
+        val_ratio = val_size / (1 - test_size)
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_temp, y_temp, test_size=val_ratio, random_state=42, stratify=y_temp
+        )
+        
+        logger.info(f"Train set: {X_train.shape[0]} samples")
+        logger.info(f"Validation set: {X_val.shape[0]} samples")
+        logger.info(f"Test set: {X_test.shape[0]} samples")
+        
+        return X_train, X_val, X_test, y_train, y_val, y_test
+    
+    def compute_class_weights(self, y_train):
+        """Compute class weights for handling imbalance"""
+        logger.info("Computing class weights for imbalanced data...")
+        
+        class_weights = compute_class_weight(
+            'balanced',
+            classes=np.unique(y_train),
+            y=y_train
+        )
+        
+        class_weight_dict = {i: weight for i, weight in enumerate(class_weights)}
+        
+        logger.info("Class weights computed:")
+        for class_id, weight in class_weight_dict.items():
+            class_name = self.class_mapping['int_to_class'][class_id]
+            logger.info(f"  {class_name}: {weight:.2f}")
+        
+        return class_weight_dict
+    
+    def run_complete_preprocessing(self, coverage_threshold=0.95):
+        """Run complete preprocessing pipeline"""
+        logger.info("Starting unified preprocessing pipeline...")
+        
+        # Step 1: Find files
+        self.find_opcode_files()
+        
+        # Step 2: Analyze sequence lengths
+        self.analyze_sequence_lengths()
+        optimal_length, coverage_data = self.suggest_optimal_length(coverage_threshold)
+        
+        # Step 3: Create visualization
+        self.plot_sequence_analysis(coverage_data, optimal_length)
+        
+        # Step 4: Extract classes
+        self.extract_classes_from_filenames()
+        
+        # Step 5: Build vocabulary
+        self.build_vocabulary()
+        
+        # Step 6: Preprocess sequences with optimal length
+        X, y, file_paths = self.preprocess_sequences(optimal_length['sequence_length'])
+        
+        # Step 7: Split data
+        X_train, X_val, X_test, y_train, y_val, y_test = self.split_data(X, y)
+        
+        # Step 8: Compute class weights
+        class_weights = self.compute_class_weights(y_train)
+        
+        # Prepare final processed data
+        self.processed_data = {
+            'X_train': X_train,
+            'X_val': X_val,
+            'X_test': X_test,
+            'y_train': y_train,
+            'y_val': y_val,
+            'y_test': y_test,
+            'y_int_train': y_train,  # For compatibility
+            'y_int_val': y_val,
+            'y_int_test': y_test,
+            'file_paths': file_paths,
+            'vocab_size': len(self.vocab) + 1,  # +1 for padding
+            'sequence_length': optimal_length['sequence_length'],
+            'num_classes': len(self.class_mapping['class_to_int']),
+            'class_weights': class_weights
+        }
+        
+        # Save analysis results
+        analysis_results = {
+            'length_statistics': self.length_stats,
+            'optimal_sequence_length': optimal_length,
+            'coverage_analysis': coverage_data,
+            'class_distribution': self.class_mapping['class_counts'],
+            'removed_classes': self.class_mapping['removed_classes'],
+            'vocabulary_size': len(self.vocab),
+            'recommendation': {
+                'sequence_length': optimal_length['sequence_length'],
+                'reasoning': f"This length covers {optimal_length['coverage']*100:.1f}% of samples",
+                'truncation_impact': f"{optimal_length['truncated_percentage']:.1f}% of samples truncated"
+            }
+        }
+        
+        # Save everything
+        self.save_preprocessing_results(analysis_results)
+        
+        logger.info("Unified preprocessing completed successfully!")
+        return self.processed_data
+    
+    def save_preprocessing_results(self, analysis_results):
+        """Save all preprocessing results"""
+        logger.info("Saving preprocessing results...")
+        
+        # Save processed data
+        with open(config.MODELS_DIR / 'processed_data.pkl', 'wb') as f:
+            pickle.dump(self.processed_data, f)
+        
+        # Save class mapping
+        with open(config.MODELS_DIR / 'class_mapping.pkl', 'wb') as f:
+            pickle.dump(self.class_mapping, f)
+        
+        # Save vocabulary
+        with open(config.MODELS_DIR / 'vocabulary.pkl', 'wb') as f:
+            pickle.dump({
+                'vocab': self.vocab,
+                'reverse_vocab': self.reverse_vocab
+            }, f)
+        
+        # Save analysis results
+        with open(config.MODELS_DIR / 'preprocessing_analysis.json', 'w') as f:
+            json.dump(analysis_results, f, indent=2)
+        
+        logger.info("All preprocessing results saved successfully")
+
+def main():
+    """Main unified preprocessing function"""
+    try:
+        logger.info("Starting unified preprocessing pipeline...")
+        
+        # Create preprocessor and run complete pipeline
+        preprocessor = UnifiedPreprocessor()
+        processed_data = preprocessor.run_complete_preprocessing(coverage_threshold=0.95)
+        
+        # Print final summary
+        logger.info("\n" + "="*60)
+        logger.info("PREPROCESSING COMPLETE - SUMMARY")
+        logger.info("="*60)
+        logger.info(f"Total samples processed: {len(processed_data['X_train']) + len(processed_data['X_val']) + len(processed_data['X_test'])}")
+        logger.info(f"Optimal sequence length: {processed_data['sequence_length']}")
+        logger.info(f"Vocabulary size: {processed_data['vocab_size']}")
+        logger.info(f"Number of classes: {processed_data['num_classes']}")
+        logger.info(f"Train/Val/Test split: {len(processed_data['X_train'])}/{len(processed_data['X_val'])}/{len(processed_data['X_test'])}")
+        logger.info(f"Class weights computed: {len(processed_data['class_weights'])} classes")
+        
+        logger.info("\nNext step: Run model training with:")
+        logger.info("python 03_train_model.py")
+        
+        return processed_data
+        
+    except Exception as e:
+        logger.error(f"Error in unified preprocessing: {e}")
+        raise
+
+if __name__ == "__main__":
+    main()
